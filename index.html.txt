@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<!-- Create Post Area -->
+<div class="card" style="margin-bottom: 2rem;">
+    <h3 style="margin-bottom: 1rem; font-weight: 600;">Share Something</h3>
+    <form action="{{ url_for('create_post') }}" method="POST" enctype="multipart/form-data">
+        <textarea name="content" class="form-control" rows="3" placeholder="What's on your mind, {{ current_user.username }}?" style="margin-bottom: 1rem; resize: none;"></textarea>
+        
+        <div class="upload-area" onclick="document.getElementById('file-upload').click();" id="upload-preview-area">
+            <i class="fa-solid fa-cloud-arrow-up upload-icon"></i>
+            <p><strong>Click to upload</strong> Image, Video, or Document</p>
+            <p style="font-size: 0.8rem; color: var(--text-light);">(No size limit)</p>
+        </div>
+        <input type="file" name="file" id="file-upload" style="display: none;" onchange="previewFile()">
+        
+        <button type="submit" class="btn btn-primary" style="float: right;">Post</button>
+        <div style="clear: both;"></div>
+    </form>
+</div>
+
+<!-- Feed -->
+<div>
+    {% for post in posts %}
+        <div class="card post" id="post-{{ post.id }}">
+            <div class="post-header">
+                <div>
+                    <div class="post-author"><i class="fa-solid fa-user-circle"></i> {{ post.author.username }}</div>
+                    <div class="post-time">{{ post.timestamp.strftime('%B %d, %Y at %I:%M %p') }}</div>
+                </div>
+                {% if post.author == current_user or current_user.is_admin %}
+                    <form action="{{ url_for('delete_post', post_id=post.id) }}" method="POST" style="display:inline;">
+                        <button type="submit" class="btn btn-danger" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;"><i class="fa-solid fa-trash"></i></button>
+                    </form>
+                {% endif %}
+            </div>
+            
+            {% if post.content %}
+                <div class="post-content">{{ post.content }}</div>
+            {% endif %}
+
+            {% if post.media_filename %}
+                <div class="post-media">
+                    {% if post.media_type == 'image' %}
+                        <img src="{{ url_for('uploaded_file', filename=post.media_filename) }}" alt="Post image">
+                    {% elif post.media_type == 'video' %}
+                        <video controls>
+                            <source src="{{ url_for('uploaded_file', filename=post.media_filename) }}">
+                            Your browser does not support the video tag.
+                        </video>
+                    {% elif post.media_type == 'document' %}
+                        <div style="padding: 2rem; background: #f3f4f6; text-align: center; border-radius: 8px;">
+                            <i class="fa-solid fa-file-lines" style="font-size: 3rem; color: var(--primary-color);"></i>
+                            <p style="margin-top: 1rem; font-weight: 500;">Attached Document: {{ post.media_filename.split('_', 1)[1] if '_' in post.media_filename else post.media_filename }}</p>
+                            <a href="{{ url_for('uploaded_file', filename=post.media_filename) }}" class="btn btn-primary mt-2" target="_blank">Download</a>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <div class="post-actions" style="position: relative;">
+                {% set my_reaction = none %}
+                {% set counts = {'like': 0, 'heart': 0, 'sad': 0} %}
+                
+                {% for l in post.likes %}
+                    {% if counts.update({l.reaction_type: counts[l.reaction_type] + 1}) %}{% endif %}
+                    {% if l.user_id == current_user.id %}
+                        {% set my_reaction = l.reaction_type %}
+                    {% endif %}
+                {% endfor %}
+                
+                <div class="reaction-container" onmouseover="document.getElementById('reactions-box-{{ post.id }}').style.display='flex';" onmouseout="document.getElementById('reactions-box-{{ post.id }}').style.display='none';">
+                    <button type="button" class="action-btn {% if my_reaction %}reacted{% endif %}" id="react-btn-{{ post.id }}" onclick="toggleReaction({{ post.id }}, 'like')">
+                        {% if my_reaction == 'like' %} <i class="fa-solid fa-thumbs-up" style="color:var(--primary-color);"></i> Like
+                        {% elif my_reaction == 'heart' %} <i class="fa-solid fa-heart" style="color:#ef4444;"></i> Love
+                        {% elif my_reaction == 'sad' %} <i class="fa-solid fa-face-sad-tear" style="color:#f59e0b;"></i> Sad
+                        {% else %} <i class="fa-regular fa-thumbs-up"></i> Like {% endif %}
+                    </button>
+                    
+                    <div class="reactions-box" id="reactions-box-{{ post.id }}">
+                        <span class="reaction-icon" onclick="event.stopPropagation(); toggleReaction({{ post.id }}, 'like')">👍</span>
+                        <span class="reaction-icon" onclick="event.stopPropagation(); toggleReaction({{ post.id }}, 'heart')">❤️</span>
+                        <span class="reaction-icon" onclick="event.stopPropagation(); toggleReaction({{ post.id }}, 'sad')">😢</span>
+                    </div>
+                </div>
+                
+                <div style="color: var(--text-light); display: flex; align-items: center; font-size: 0.9rem; gap: 0.5rem;" id="reaction-counts-{{ post.id }}">
+                    <span style="display:{% if counts['like'] > 0 %}inline{% else %}none{% endif %};" id="count-like-{{ post.id }}">👍 <span class="val">{{ counts['like'] }}</span></span>
+                    <span style="display:{% if counts['heart'] > 0 %}inline{% else %}none{% endif %};" id="count-heart-{{ post.id }}">❤️ <span class="val">{{ counts['heart'] }}</span></span>
+                    <span style="display:{% if counts['sad'] > 0 %}inline{% else %}none{% endif %};" id="count-sad-{{ post.id }}">😢 <span class="val">{{ counts['sad'] }}</span></span>
+                </div>
+            </div>
+
+            <div class="comments-section" id="comments-{{ post.id }}">
+                <div id="comments-list-{{ post.id }}">
+                    {% for comment in post.comments %}
+                        <div class="comment">
+                            <div class="comment-author">{{ comment.author.username }} <span style="font-size:0.7rem; color:#6b7280; margin-left:10px;">{{ comment.timestamp.strftime('%b %d, %H:%M') }}</span></div>
+                            <div class="comment-text">{{ comment.content }}</div>
+                        </div>
+                    {% endfor %}
+                </div>
+                
+                <div class="comment-input-div">
+                    <input type="text" id="comment-input-{{ post.id }}" placeholder="Write a comment..." onkeypress="if(event.key === 'Enter') submitComment({{ post.id }});">
+                    <button type="button" class="btn btn-primary" onclick="submitComment({{ post.id }})"><i class="fa-solid fa-paper-plane"></i></button>
+                </div>
+            </div>
+        </div>
+    {% endfor %}
+    
+    {% if not posts %}
+        <div class="card text-center" style="padding: 4rem 2rem;">
+            <i class="fa-solid fa-mug-hot" style="font-size: 4rem; color: var(--text-light); margin-bottom: 1rem;"></i>
+            <h3>No posts yet</h3>
+            <p style="color: var(--text-light);">Be the first to share something!</p>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+function previewFile() {
+    const file = document.getElementById('file-upload').files[0];
+    const previewArea = document.getElementById('upload-preview-area');
+    if(file) {
+        previewArea.innerHTML = `
+            <i class="fa-solid fa-file-circle-check upload-icon" style="color: #10b981;"></i>
+            <p><strong>Selected:</strong> ${file.name}</p>
+        `;
+        previewArea.style.borderColor = "#10b981";
+        previewArea.style.background = "rgba(16, 185, 129, 0.05)";
+    }
+}
+</script>
+{% endblock %}
